@@ -1,260 +1,409 @@
-'''
-15-110 Homework 5
+""
+15-110 Hw6 - Social Media Analytics Project
 Name: Izabella DeReno
-Andrew ID: iad
-'''
+AndrewID: iad
+"""
 
-import random
+import hw6_social_tests as test
 
-################################################################################
+project = "Social" # don't edit this
 
-'''
-#1 - generateBoard(words)
-Parameters: 1D list of strings
-Returns: 2D list (board)
-'''
+### WEEK 1 ###
 
-def generateBoard(words):
-    board = []
-    for i in range(len(words)):
-        value = words[i]
-        for i in range(2):
-            l = [value, False]
-            board.append(l)
-
-    random.shuffle(board)
-    return board
-
+import pandas as pd
+import nltk
+nltk.download('vader_lexicon', quiet=True)
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+import matplotlib.pyplot as plt; plt.rcdefaults()
+import numpy as np
+endChars = [ " ", "\n", "#", ".", ",", "?", "!", ":", ";", ")" ]
 
 '''
-#2 - displayBoard(board)
-Parameters: 2D list (board)
-Returns: None
-'''
-
-def displayBoard(board):
-    for row in range(len(board)):
-        for col in range(len(board[row])):
-            if board[row][1] == False:
-                value =  "???"
-            else:
-                value = board[row][0]
-
-        print(row,":",value)
-
-'''
-#3 - getFlippedCards(board)
-Parameters: 2D list (board)
-Returns: 1D list of ints
-'''
-
-def getFlippedCards(board):
-    lst = []
-
-    for row in range(len(board)):
-        for col in range(len(board[row])):
-            if board[row][1] == True:
-                lst.append(row)
-                result = lst[0:len(lst):2]
-
-    if lst == []:
-        return []
-
-    return result
-
-
-'''
-#4 - loadWords(filename)
+makeDataFrame(filename)
+#3 [Check6-1]
 Parameters: str
-Returns: 1D list of strs
+Returns: dataframe
 '''
+def makeDataFrame(filename):
+    df = pd.read_csv(filename)
+    return df
 
-def loadWords(filename):
+'''
+parseName(fromString)
+#4 [Check6-1]
+Parameters: str
+Returns: str
+'''
+def parseName(fromString):
+    name = ""
+    y = fromString.split(" ")
+    firstName = y[1]
+    lastName = y[2]
+    name = firstName + " " + lastName
+    if lastName[0] == "(":
+        name = firstName
+    return name
+
+
+'''
+parsePosition(fromString)
+#4 [Check6-1]
+Parameters: str
+Returns: str
+'''
+def parsePosition(fromString):
+    y = fromString.split("(")[1].split(" ")[0]
+    return y
+
+'''
+parseState(fromString)
+#4 [Check6-1]
+Parameters: str
+Returns: str
+'''
+def parseState(fromString):
+    states = ""
+    index = fromString.split(" ")
+    indexFrom = 0
+    for i in range(len(index)):
+        if index[i] == "from":
+            states += index[i + 1]
+            if i + 2 < len(index):
+                states += " " + index[i + 2]
+    states = states[:-1]
+    return states
+
+'''
+findHashtags(message)
+#5 [Check6-1]
+Parameters: str
+Returns: list of strs
+'''
+def findHashtags(message):
     lst = []
-    f = open(filename, "r")
-    lines = f.read()
-    lst = lines.split(",")
-    f.close()
+    for i in range(len(message)):
+        if message[i]== "#":
+            x = i
+            for x in range(i+1, len(message)):
+                if message[x] in endChars:
+                    x -= 1
+                    break
+            lst.append(message[i:x+1])
     return lst
 
 '''
-#5 - pickIndex(board)
-Parameters: 2D list (board)
-Returns: int
+getRegionFromState(stateDf, state)
+#6 [Check6-1]
+Parameters: dataframe ; str
+Returns: str
 '''
-
-def pickIndex(board):
-    n = len(board)
-    func = getFlippedCards(board)
-    while True:
-        row = int(input("Enter a number :"))
-        if row  < n and row > -1:
-            if row not in func:
-                return row
-            else:
-                print("You've already picked this one. Try again.")
-        else:
-            print("That's out of the range! Try again.")
+def getRegionFromState(stateDf, state):
+    i = 0
+    for row in stateDf["state"]:
+        if row == state:
+            return stateDf["region"][i]
+        i += 1
 
 '''
-#6 - playMemoryGame(filename)
-Parameters: str
+addColumns(data, stateDf)
+#7 [Check6-1] & #2 [Check6-2]
+Parameters: dataframe ; dataframe
 Returns: None
 '''
+def addColumns(data, stateDf):
+    names = []
+    positions = []
+    states = []
+    regions = []
+    hashtags = []
+    sentiment = []
+    sI = SentimentIntensityAnalyzer()
+    for label in data["label"]:
+        names.append(parseName(label))
+        positions.append(parsePosition(label))
+        states.append(parseState(label))
+        regions.append(getRegionFromState(stateDf, parseState(label)))
+    for text in data["text"]:
+        hashtags.append(findHashtags(text))
+        sentiment.append(findSentiment(sI, text))
+    data["name"] = names
+    data["position"] = positions
+    data["state"] = states
+    data["region"] = regions
+    data["hashtags"] = hashtags
+    data["sentiment"] = sentiment
+    return
+
+### WEEK 2 ###
+
+'''
+findSentiment(classifier, message)
+#1 [Check6-2]
+Parameters: SentimentIntensityAnalyzer ; str
+Returns: str
+'''
+def findSentiment(classifier, message):
+    score = classifier.polarity_scores(message)['compound']
+    if score < -0.1:
+        return "negative"
+    elif score > 0.1:
+        return "positive"
+    return "neutral"
+
+'''
+getDataCountByState(data, colName, dataToCount)
+#3 [Check6-2]
+Parameters: dataframe ; str ; str
+Returns: dict mapping strs to ints
+'''
+def getDataCountByState(data, colName, dataToCount):
+    count = {}
+    if colName != "" or dataToCount != "": data = data[data[colName] == dataToCount]
+    for i in data["state"]:
+        if i not in count:
+          count[i] = 0
+        count[i] += 1
+    return count
+
+'''
+getDataForRegion(data, colName)
+#4 [Check6-2]
+Parameters: dataframe   ; str
+Returns: dict mapping strs to (dicts mapping strs to ints)
+'''
+def getDataForRegion(data, colName):
+    d = {}
+    for i in range(0, len(data)):
+        region = data.iloc[i]["region"]
+        colEntry = data.iloc[i][colName]
+        if region not in d:
+            d[region] = {}
+        if colEntry not in d[region]:
+            d[region][colEntry] = 0
+        d[region][colEntry] += 1
+
+    return d
 
 
-def playMemoryGame(filename):
-    words = loadWords(filename)
-    board = generateBoard(words)
-    print("Welcome to Memory!")
-    display = displayBoard(board)
-    c = 0
-    while len(getFlippedCards(board)) != len(board):
-        c  += 1
-        index = pickIndex(board)
-        board[index][1] = True
-        displayBoard(board)
+'''
+getHashtagRates(data)
+#5 [Check6-2]
+Parameters: dataframe
+Returns: dict mapping strs to ints
+'''
+def getHashtagRates(data):
+    rates = {}
+    for i in range(0, len(data)):
+        for i in data.iloc[i]["hashtags"]:
+            if i not in rates:
+                rates[i] = 0
+            rates[i] += 1
+    return rates
 
-        indexx = pickIndex(board)
-        board[indexx][1] = True
-        displayBoard(board)
+'''
+mostCommonHashtags(hashtags, count)
+#6 [Check6-2]
+Parameters: dict mapping strs to ints ; int
+Returns: dict mapping strs to ints
+'''
+def mostCommonHashtags(hashtags, count):
+    d = {}
+    while len(d) < count:
+        bestHashtag = ""
+        bestCount = 0
+        for x in hashtags:
+            if hashtags[x] > bestCount:
+                if x not in d:
+                  bestHashtag = x
+                  bestCount = hashtags[x]
+        d[bestHashtag] = bestCount
+    return d
 
-        if board[index][0] == board[indexx][0]:
-            print("MATCHED!!!!!!!!!")
-        else:
-            board[index][1] = False
-            board[indexx][1] = False
-            print("NOT A MATCH >:(((((")
+'''
+getHashtagSentiment(data, hashtag)
+#7 [Check6-2]
+Parameters: dataframe ; str
+Returns: float
+'''
+def getHashtagSentiment(data, hashtag):
+    sentiment, num = 0, 0
+    for index,row in data.iterrows():
+        lst = row["hashtags"]
+        if hashtag in lst:
+            s = row["sentiment"]
+            if s == "positive": sentiment += 1
+            elif s == "negative": sentiment -= 1
+            num += 1
+    if num == 0: return 0
+    return sentiment/num
 
-    print("CONGRATS YOU SMART COOKIE !!!!! YOU MADE ", c, "MOVES!!!")
 
+### WEEK 3 ###
 
-
+'''
+graphStateCounts(stateCounts, title)
+#2 [Hw6]
+Parameters: dict mapping strs to ints ; str
+Returns: None
+'''
+def graphStateCounts(stateCounts, title):
+    import matplotlib.pyplot as plt
+    x = []
+    y = []
+    for i in stateCounts:
+        x.append(i)
+        y.append(stateCounts[i])
+    plt.bar(x, y)
+    plt.title(title)
+    plt.xlabel("States")
+    plt.xticks(ticks = list(range(len(x))), labels = x, rotation = "vertical")
+    plt.ylabel("Count")
+    plt.show()
     return
 
 
+'''
+graphTopNStates(stateCounts, stateFeatureCounts, n, title)
+#3 [Hw6]
+Parameters: dict mapping strs to ints ; dict mapping strs to ints ; int ; str
+Returns: None
+'''
+def graphTopNStates(stateCounts, stateFeatureCounts, n, title):
+    topNStates = {}
+    while len(topNStates) < n:
+        bestState = ""
+        highestRate = 0
+        for state in stateCounts:
+            if stateCounts[state] != 0 and state in stateFeatureCounts:
+                if stateFeatureCounts[state] / stateCounts[state] > highestRate:
+                    if state not in topNStates:
+                        bestState = state
+                        highestRate = stateFeatureCounts[state] / stateCounts[state]
+            topNStates[bestState] = highestRate
+        graphStateCounts(topNStates, title)
+    return
 
 
+'''
+graphRegionComparison(regionDicts, title)
+#4 [Hw6]
+Parameters: dict mapping strs to (dicts mapping strs to ints) ; str
+Returns: None
+'''
+def graphRegionComparison(regionDicts, title):
+    regions = []
+    features = []
+    rFeat = []
+    for dict in regionDicts:
+        regions.append(dict)
+        fs = regionDicts[dict]
+        for f in fs:
+            if f not in features:
+                features.append(f)
 
-################################################################################
-''' Test Functions '''
+    for dict in regionDicts:
+        lst = []
+        for feat in features:
+            fs = regionDicts[dict]
+            if feat in fs:
+                f = fs[feat]
+            else:
+                f = 0
+            lst.append(f)
+        rFeat.append(lst)
+    sideBySideBarPlots(features, regions, rFeat, title)
+    return
 
-def testGenerateBoard():
-    print("Testing generateBoard()...", end="")
-    # NOTE: this just tests that you're making the right cards.
-    # Random order is tested on Gradescope.
-    assert(type(generateBoard(["dog", "cat"])) == list)
-    assert(sorted(generateBoard(["dog", "cat"])) == [ ["cat", False], ["cat", False], ["dog", False], ["dog", False] ])
-    assert(sorted(generateBoard(["dog", "cat", "owl"])) == [ ["cat", False], ["cat", False], ["dog", False], ["dog", False], ["owl", False], ["owl", False] ])
-    assert(sorted(generateBoard(["dog", "cat", "owl", "hat", "egg"])) == [ ["cat", False], ["cat", False], ["dog", False], ["dog", False], ["egg", False], ["egg", False], ["hat", False], ["hat", False], ["owl", False], ["owl", False] ])
-    assert(sorted(generateBoard(["dog"])) == [ ["dog", False], ["dog", False] ])
-    assert(generateBoard([]) == [])
 
-    # Make sure that the cards aren't aliased!
-    board = generateBoard(["dog"])
-    board[0][1] = True
-    assert(board[1][1] == False) # second card should *not* change when first card is changed.
-    print("... done!")
+'''
+graphHashtagSentimentByFrequency(data)
+#4 [Hw6]
+Parameters: dataframe
+Returns: None
+'''
+def graphHashtagSentimentByFrequency(data):
+    hashtags = getHashtagRates(data)
+    topHashtags = mostCommonHashtags(hashtags, 50)
+    lstHashtags = []
+    lstFreq = []
+    lstSentiment = []
+    for hashtag in topHashtags:
+        lstHashtags.append(hashtag)
+        lstFreq.append(topHashtags[hashtag])
+        sentiment = getHashtagSentiment(data, hashtag)
+        lstSentiment.append(sentiment)
+    scatterPlot(lstFreq, lstSentiment, lstHashtags, "Hashtag Sentiment vs. Frequency" )
+    return
 
-def testDisplayBoard():
-    print("Testing displayBoard()...")
-    # Compare your output to the expected output to make sure it looks right!
-    print("Display Test 1:")
-    displayBoard([ ["dog", False], ["cat", True], ["cat", False], ["dog", True] ])
-    # Should print:
-    #0: ???
-    #1: cat
-    #2: ???
-    #3: dog
-    print("-----")
-    print("Display Test 2:")
-    displayBoard([ ["owl", True], ["owl", True], ["cat", False], ["dog", False], ["cat", True], ["dog", False] ])
-    # Should print:
-    #0: owl
-    #1: owl
-    #2: ???
-    #3: ???
-    #4: cat
-    #5: ???
-    print("-----")
-    print("Display Test 3:")
-    displayBoard([["egg", False], ["owl", False], ["owl", False], ["cat", False], ["cat", False], ["hat", False], ["egg", False], ["hat", False], ["dog", False], ["dog", False]])
-    # Should print:
-    #0: ???
-    #1: ???
-    #2: ???
-    #3: ???
-    #4: ???
-    #5: ???
-    #6: ???
-    #7: ???
-    #8: ???
-    #9: ???
-    print("-----")
-    print("Display Test 4:")
-    displayBoard([ ["dog", True], ["dog", True] ])
-    # Should print:
-    #0: dog
-    #1: dog
-    print("-----")
-    print("... done!")
 
-def testGetFlippedCards():
-    print("Testing getFlippedCards()...", end="")
-    assert(getFlippedCards([ ["dog", False], ["cat", True], ["cat", False], ["dog", True] ]) == [1, 3])
-    assert(getFlippedCards([ ["owl", True], ["owl", True], ["cat", False], ["dog", False], ["cat", True], ["dog", False] ]) == [0, 1, 4])
-    assert(getFlippedCards([["egg", False], ["owl", False], ["owl", False], ["cat", False], ["cat", False], ["hat", False], ["egg", False], ["hat", False], ["dog", False], ["dog", False]]) == [])
-    assert(getFlippedCards([ ["dog", True], ["dog", True] ]) == [0, 1])
-    assert(getFlippedCards([]) == [])
-    print("... done!")
+#### WEEK 3 PROVIDED CODE ####
+"""
+Expects 3 lists - one of x labels, one of data labels, and one of data values - and a title.
+You can use it to graph any number of datasets side-by-side to compare and contrast.
+"""
+def sideBySideBarPlots(xLabels, labelList, valueLists, title):
+    import matplotlib.pyplot as plt
 
-def testLoadWords():
-    print("Testing loadWords()...")
-    # Make sure you've downloaded memory1.txt, memory2.txt, and memory3.txt into the correct folder first!
-    assert(loadWords("memory1.txt") == [ "dog", "cat" ])
-    assert(loadWords("memory2.txt") == [ "owl", "dog", "cat" ])
-    assert(loadWords("memory3.txt") == [ "cat", "dog", "horse", "hat", "owl" ])
-    print("... done!")
+    w = 0.8 / len(labelList)  # the width of the bars
+    xPositions = []
+    for dataset in range(len(labelList)):
+        xValues = []
+        for i in range(len(xLabels)):
+            xValues.append(i - 0.4 + w * (dataset + 0.5))
+        xPositions.append(xValues)
 
-def testPickIndex():
-    print("Testing pickIndex()...")
-    # You'll need to test this one yourself! Try using the same inputs that we did in the writeup and see if you get the expected messages.
-    print("pickIndex Test 1:")
-    board1 = [ ["owl", False], ["dog", True], ["cat", False], ["cat", False], ["owl", False], ["dog", True] ]
-    # -1 -> print message [out of range]
-    # 6 -> print message [out of range]
-    # 1 -> print message [already flipped]
-    # Valid indexes you can try: 0, 2, 3, 4
-    index = pickIndex(board1)
-    assert(index in [0, 2, 3, 4]) # four possible indexes to pick
-    print("-----")
-    print("pickIndex Test 2:")
+    for index in range(len(valueLists)):
+        plt.bar(xPositions[index], valueLists[index], width=w, label=labelList[index])
 
-    board2 = [ ["dog", True], ["dog", False] ]
-    # The only valid index is 1
-    assert(pickIndex(board2) == 1)
-    print("-----")
-    print("... done!")
+    plt.xticks(ticks=list(range(len(xLabels))), labels=xLabels, rotation="vertical")
+    plt.legend()
+    plt.title(title)
 
-def runPlayMemoryGame():
-    print("Running playMemoryGame()...")
-    # Make sure you've downloaded memory1.txt, memory2.txt, and memory3.txt into the correct folder first!
-    print("Game test 1:")
-    playMemoryGame("memory1.txt")
-    # Play the game, see if it works
-    print("-----")
+    plt.show()
 
-    print("Game test 2:")
-    playMemoryGame("memory3.txt")
-    print("-----")
-    print("... done!")
+"""
+Expects two lists of probabilities and a list of labels (words) all the same length
+and plots the probabilities of x and y, labels each point, and puts a title on top.
+Expects that the y axis will be from -1 to 1. If you want a different y axis, change plt.ylim
+"""
+def scatterPlot(xValues, yValues, labels, title):
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots()
 
-def testAll():
-    testGenerateBoard()
-    testDisplayBoard()
-    testGetFlippedCards()
-    testLoadWords()
-    testPickIndex()
-    runPlayMemoryGame()
+    plt.scatter(xValues, yValues)
 
-testAll()
+    # make labels for the points
+    for i in range(len(labels)):
+        plt.annotate(labels[i], # this is the text
+                    (xValues[i], yValues[i]), # this is the point to label
+                    textcoords="offset points", # how to position the text
+                    xytext=(0, 10), # distance from text to points (x,y)
+                    ha='center') # horizontal alignment can be left, right or center
+
+    plt.title(title)
+    plt.ylim(-1, 1)
+
+    # a bit of advanced code to draw a line on y=0
+    ax.plot([0, 1], [0.5, 0.5], color='black', transform=ax.transAxes)
+
+    plt.show()
+
+
+### RUN CODE ###
+
+# This code runs the test cases to check your work
+if __name__ == "__main__":
+    print("\n" + "#"*15 + " WEEK 1 TESTS " +  "#" * 16 + "\n")
+    test.week1Tests()
+    print("\n" + "#"*15 + " WEEK 1 OUTPUT " + "#" * 15 + "\n")
+    test.runWeek1()
+
+    ## Uncomment these for Week 2 ##
+    print("\n" + "#"*15 + " WEEK 2 TESTS " +  "#" * 16 + "\n")
+    test.week2Tests()
+    print("\n" + "#"*15 + " WEEK 2 OUTPUT " + "#" * 15 + "\n")
+    test.runWeek2()
+
+    ## Uncomment these for Week 3 ##
+    print("\n" + "#"*15 + " WEEK 3 OUTPUT " + "#" * 15 + "\n")
+    test.runWeek3()
